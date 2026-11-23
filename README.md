@@ -87,4 +87,4 @@ Con `--dry-run` muestra lo que enviaría sin contactar a Guard. En `ejemplos/ana
 
 ## Despliegue de demostración
 
-La demo corre en Vercel (plan Hobby) con una base PostgreSQL gratuita de Neon conectada desde Vercel → Storage. Con `GUARD_DEMO=1`, `scripts/vercel-build.mjs` aplica las migraciones, carga los catálogos y los datos ficticios en cada build, y las cuentas de prueba no se pueden desactivar ni cambiar de contraseña. Variables: `DATABASE_URL` y `DATABASE_URL_UNPOOLED` (las crea Neon), `AUTH_SECRET`, `GUARD_PUBLIC_URL`, `GUARD_ALLOWED_EMAIL_DOMAINS=demo.test` y `GUARD_DEMO=1`.
+La demo corre en Vercel (plan Hobby) con una base PostgreSQL gratuita de Neon conectada desde Vercel → Storage. Con `GUARD_DEMO=1`, `scripts/vercel-build.mjs` aplica las migraciones, carga los catálogos y los datos ficticios en cada build, y las cuentas de prueba no se pueden desactivar ni cambiar de contraseña. Variables: `DATABASE_URL` y `DATABASE_URL_UNPOOLED` (las crea Neon), `GUARD_PUBLIC_URL`, `GUARD_ALLOWED_EMAIL_DOMAINS=demo.test` y `GUARD_DEMO=1`. Si no se define `AUTH_SECRET`, el build de la demo genera una clave de sesión aleatoria por despliegue.
