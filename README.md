@@ -6,7 +6,7 @@ Cada vez que se abre un pull request, GitHub Actions analiza el cambio con **git
 
 > **Edición académica.** Este repositorio es la versión pública del proyecto de título de Sergio Maldonado (IPLACEX, 2026), desarrollado para el equipo técnico de Postedin. Contiene el código completo de la plataforma y su base de datos, pero no la configuración de producción de la empresa ni sus datos: la demostración usa solo datos ficticios.
 
-- **Demostración:** ver el enlace y las cuentas de prueba en el informe del proyecto.
+- **Demostración:** https://postedin-guard-demo.vercel.app (las cuentas de prueba están en el informe del proyecto)
 - **Documentación:** [frontend](docs/frontend.md) · [backend](docs/backend.md) · [base de datos](docs/base-de-datos.md)
 
 ## Funcionalidades
