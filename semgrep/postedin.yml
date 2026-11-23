@@ -1,0 +1,90 @@
+# Reglas propias de Postedin para los errores que más se repiten en código escrito con IA.
+# metadata.guard_categoria y guard_severidad deciden cómo se registra el hallazgo en Guard.
+
+rules:
+  - id: route-sin-autorizacion
+    languages: [typescript]
+    severity: ERROR
+    message: >-
+      Route handler sin verificación de sesión ni de permisos. Toda ruta de la API debe
+      validar en el servidor quién llama antes de leer o escribir datos.
+    metadata:
+      guard_categoria: Permisos de API
+      guard_severidad: Alta
+      guard_titulo: Route handler sin verificación de sesión ni permisos
+    paths:
+      include: ["**/app/api/**/route.ts"]
+      # reports/public es pública a propósito: se entra con un enlace firmado (token) y la ruta
+      # valida ese token. El test route-access-coverage del portal la exceptúa por lo mismo.
+      exclude: ["**/app/api/auth/**", "**/app/api/reports/public/**", "**/*.test.ts"]
+    patterns:
+      - pattern: |
+          export async function $METODO(...) { ... }
+      - metavariable-regex:
+          metavariable: $METODO
+          regex: ^(GET|POST|PUT|PATCH|DELETE)$
+      # También cuenta un helper local (guard, verify*, forbid*) o delegar en un handler compartido.
+      - pattern-not-regex: \b(auth|assert\w+|require\w+|apiRequire\w+|denyUnless\w+|checkAdmin\w+|authorizeRun|transitionRun|loadTrackerForSession|repositorioPorToken|guard\w*|verify\w+|forbid\w+|handle\w*Request)\(
+
+  - id: query-raw-unsafe
+    languages: [typescript]
+    severity: ERROR
+    message: >-
+      $queryRawUnsafe / $executeRawUnsafe con texto armado permite inyección SQL. Usa la
+      versión con plantilla ($queryRaw`...`) o parámetros.
+    metadata:
+      guard_categoria: Código inseguro
+      guard_severidad: Alta
+    patterns:
+      - pattern-either:
+          - pattern: $DB.$queryRawUnsafe($SQL, ...)
+          - pattern: $DB.$executeRawUnsafe($SQL, ...)
+      - pattern-not: $DB.$queryRawUnsafe("...", ...)
+      - pattern-not: $DB.$executeRawUnsafe("...", ...)
+
+  - id: html-sin-sanitizar
+    languages: [typescript]
+    severity: WARNING
+    message: >-
+      dangerouslySetInnerHTML con contenido sin sanitizar abre la puerta a XSS. Pásalo por
+      DOMPurify.sanitize antes de pintarlo.
+    metadata:
+      guard_categoria: Código inseguro
+      guard_severidad: Media
+    patterns:
+      - pattern: |
+          <$EL dangerouslySetInnerHTML={{__html: $HTML}} />
+      - pattern-not: |
+          <$EL dangerouslySetInnerHTML={{__html: DOMPurify.sanitize(...)}} />
+
+  - id: cookie-sesion-insegura
+    languages: [typescript]
+    severity: WARNING
+    message: >-
+      Cookie con httpOnly o secure desactivado. Las cookies de sesión deben ser httpOnly,
+      secure y sameSite para que un script o una red insegura no las lean.
+    metadata:
+      guard_categoria: Gestión de sesiones
+      guard_severidad: Media
+    pattern-either:
+      - pattern: |
+          $C.set($N, $V, {..., httpOnly: false, ...})
+      - pattern: |
+          $C.set($N, $V, {..., secure: false, ...})
+      - pattern: |
+          $C.set({..., httpOnly: false, ...})
+
+  - id: secreto-en-codigo-cliente
+    languages: [typescript]
+    severity: ERROR
+    message: >-
+      Variable de entorno con apariencia de secreto expuesta al navegador con el prefijo
+      NEXT_PUBLIC_. Todo lo NEXT_PUBLIC_ queda visible en el bundle del cliente.
+    metadata:
+      guard_categoria: Secreto expuesto
+      guard_severidad: Alta
+    patterns:
+      - pattern: process.env.$VAR
+      - metavariable-regex:
+          metavariable: $VAR
+          regex: ^NEXT_PUBLIC_\w*(SECRET|TOKEN|PASSWORD|PRIVATE|API_KEY)\w*$

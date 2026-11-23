@@ -1,0 +1,29 @@
+title = "Postedin Guard"
+
+[extend]
+useDefault = true
+
+[allowlist]
+# Los tests usan claves y llaves ficticias a propósito (fixtures de cifrado, contraseñas de
+# prueba); escanearlos solo genera falsos positivos críticos que bloquearían cada PR.
+description = "Dependencias, builds, tests con valores ficticios y la clave de demo local de Guard"
+paths = [
+  '''(^|/)node_modules/''',
+  '''(^|/)\.next/''',
+  '''^(guard/)?scripts/fixtures/''',
+  '''^(guard/)?prisma/demo\.ts$''',
+  '''(^|/)__tests__/''',
+  '''\.test\.(ts|tsx|mjs)$''',
+  '''(^|/)package-lock\.json$''',
+]
+
+# generic-api-key confunde nombres de claves de almacenamiento del navegador
+# (const FAV_KEY = "ga4_favorites") con secretos. Solo se ignora un valor en minúsculas con
+# guiones bajos asignado a una constante *_KEY; una clave real nunca tiene esa forma.
+[[rules]]
+id = "generic-api-key"
+
+  [[rules.allowlists]]
+  description = "Nombres de claves de localStorage/sessionStorage"
+  regexTarget = "line"
+  regexes = ['''const [A-Z][A-Z0-9_]*_KEY = "[a-z0-9]+(_[a-z0-9]+)+"''']

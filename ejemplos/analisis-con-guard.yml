@@ -1,0 +1,81 @@
+name: Analisis con Postedin Guard (ejemplo)
+
+# Analiza cada pull request (y cada push a main) con gitleaks, npm audit, Semgrep y las
+# pruebas, y envía el resultado a Postedin Guard, que responde APROBADO o BLOQUEADO.
+# Requiere los secrets GUARD_URL y GUARD_TOKEN (token del repositorio en Guard).
+# Con la variable de repositorio GUARD_ENFORCE=true, un BLOQUEADO hace fallar este job;
+# sin ella, el resultado solo se informa (modo de marcha blanca del piloto).
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: guard-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  GITLEAKS_VERSION: 8.30.1
+  SEMGREP_VERSION: 1.180.0
+
+jobs:
+  guard:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+
+      # Antes de npm ci, para no recorrer node_modules. Se escanea el estado actual del código;
+      # los secretos del historial se tratan aparte (rotación + limpieza del historial).
+      - name: gitleaks
+        run: |
+          set -euo pipefail
+          dir="$RUNNER_TEMP/gitleaks"
+          mkdir -p "$dir"
+          base="https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}"
+          tar="gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          curl -fsSL -o "$dir/$tar" "$base/$tar"
+          curl -fsSL -o "$dir/checksums.txt" "$base/gitleaks_${GITLEAKS_VERSION}_checksums.txt"
+          (cd "$dir" && grep " $tar\$" checksums.txt | sha256sum -c -)
+          tar -xzf "$dir/$tar" -C "$dir" gitleaks
+          "$dir/gitleaks" dir . --config ruta/a/postedin-guard/gitleaks.toml --redact --report-format json \
+            --report-path gitleaks.json --exit-code 0 --no-banner
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Instalar dependencias
+        run: npm ci
+
+      - name: npm audit
+        run: npm audit --json > npm-audit.json || true
+
+      - name: Pruebas (vitest)
+        run: npx vitest run --reporter=json --outputFile=vitest.json || true
+
+      - name: Semgrep
+        run: |
+          set -euo pipefail
+          python3 -m venv "$RUNNER_TEMP/semgrep"
+          "$RUNNER_TEMP/semgrep/bin/pip" install --quiet "semgrep==${SEMGREP_VERSION}"
+          "$RUNNER_TEMP/semgrep/bin/semgrep" scan --config ruta/a/postedin-guard/semgrep/postedin.yml \
+            --json --output semgrep.json --metrics=off --disable-version-check \
+            --exclude node_modules --exclude .next || true
+
+      - name: Enviar a Postedin Guard
+        env:
+          GUARD_URL: ${{ secrets.GUARD_URL }}
+          GUARD_TOKEN: ${{ secrets.GUARD_TOKEN }}
+          GUARD_ENFORCE: ${{ vars.GUARD_ENFORCE }}
+        run: |
+          node ruta/a/postedin-guard/scripts/guard-scan.mjs \
+            --gitleaks gitleaks.json --npm-audit npm-audit.json \
+            --semgrep semgrep.json --vitest vitest.json --sql

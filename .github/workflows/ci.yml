@@ -1,0 +1,38 @@
+name: CI
+
+# Postedin Guard pasa por las mismas revisiones que exige a los demás repositorios:
+# lint, tipos, pruebas con cobertura mínima (70 % en src/lib) y build de producción.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    # prisma.config.ts exige DATABASE_URL incluso para `prisma generate`. Nada en este job
+    # se conecta a una base: es un valor de relleno, no una credencial.
+    env:
+      DATABASE_URL: postgresql://build:build@localhost:5432/build
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - run: npm ci
+      - run: npm run lint
+      - run: npx tsc --noEmit
+      - run: npx vitest run --coverage
+      - run: npm run build
+        env:
+          AUTH_SECRET: solo-para-compilar

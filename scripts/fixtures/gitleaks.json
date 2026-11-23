@@ -1,0 +1,15 @@
+[
+  {
+    "Description": "Generic API Key",
+    "StartLine": 18,
+    "EndLine": 18,
+    "StartColumn": 3,
+    "EndColumn": 40,
+    "Match": "REDACTED",
+    "Secret": "REDACTED",
+    "File": "src/config/integraciones.ts",
+    "Commit": "0123456789abcdef0123456789abcdef01234567",
+    "RuleID": "generic-api-key",
+    "Fingerprint": "0123456789abcdef0123456789abcdef01234567:src/config/integraciones.ts:generic-api-key:18"
+  }
+]

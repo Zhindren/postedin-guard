@@ -1,0 +1,15 @@
+/node_modules
+/.next/
+/coverage
+/src/generated/
+.env
+.env.local
+*.tsbuildinfo
+next-env.d.ts
+!.env.example
+.env*.local
+.vercel
+
+# Archivos de agentes que genera next dev
+CLAUDE.md
+AGENTS.md

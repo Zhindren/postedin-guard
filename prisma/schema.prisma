@@ -1,0 +1,268 @@
+// Modelo relacional de Postedin Guard (3FN). Los cambios de estructura se hacen solo con
+// migraciones de Prisma Migrate; nunca con SQL directo sobre la base.
+
+datasource db {
+  provider = "postgresql"
+}
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+model Rol {
+  id          Int       @id @default(autoincrement()) @map("id_rol")
+  nombre      String    @unique @db.VarChar(30)
+  descripcion String?   @db.VarChar(150)
+  usuarios    Usuario[]
+
+  @@map("rol")
+}
+
+model Severidad {
+  id                 Int                @id @default(autoincrement()) @map("id_severidad")
+  nombre             String             @unique @db.VarChar(20)
+  nivel              Int                @unique @db.SmallInt
+  plazoDias          Int                @map("plazo_dias") @db.SmallInt
+  hallazgos          Hallazgo[]
+  politicasBloqueo   PoliticaSeguridad[]
+
+  @@map("severidad")
+}
+
+model CategoriaHallazgo {
+  id              Int        @id @default(autoincrement()) @map("id_categoria")
+  nombre          String     @unique @db.VarChar(60)
+  descripcion     String?    @db.VarChar(255)
+  referenciaOwasp String?    @map("referencia_owasp") @db.VarChar(20)
+  hallazgos       Hallazgo[]
+
+  @@map("categoria_hallazgo")
+}
+
+model Herramienta {
+  id           Int        @id @default(autoincrement()) @map("id_herramienta")
+  nombre       String     @unique @db.VarChar(40)
+  tipoAnalisis String     @map("tipo_analisis") @db.VarChar(30)
+  version      String?    @db.VarChar(20)
+  hallazgos    Hallazgo[]
+
+  @@map("herramienta")
+}
+
+model ItemChecklist {
+  id          Int                  @id @default(autoincrement()) @map("id_item")
+  pregunta    String               @db.VarChar(200)
+  descripcion String?              @db.VarChar(255)
+  orden       Int                  @db.SmallInt
+  activo      Boolean              @default(true)
+  respuestas  RespuestaChecklist[]
+
+  @@map("item_checklist")
+}
+
+model Usuario {
+  id             Int       @id @default(autoincrement()) @map("id_usuario")
+  rolId          Int       @map("id_rol")
+  nombre         String    @db.VarChar(60)
+  apellido       String    @db.VarChar(60)
+  email          String    @unique @db.VarChar(120)
+  passwordHash   String    @map("password_hash") @db.VarChar(255)
+  usuarioGithub  String?   @unique @map("usuario_github") @db.VarChar(40)
+  activo         Boolean   @default(true)
+  fechaCreacion  DateTime  @default(now()) @map("fecha_creacion")
+  ultimoAcceso   DateTime? @map("ultimo_acceso")
+  // Se incrementa al cambiar la contraseña o desactivar la cuenta: invalida las sesiones previas.
+  versionSesion  Int       @default(0) @map("version_sesion")
+  resetHash      String?   @unique @map("reset_hash") @db.Char(64)
+  resetExpira    DateTime? @map("reset_expira")
+
+  rol                   Rol                  @relation(fields: [rolId], references: [id])
+  eventos               BitacoraAuditoria[]
+  repositoriosACargo    Repositorio[]
+  hallazgosAsignados    Hallazgo[]
+  comentarios           ComentarioHallazgo[]
+  respuestasChecklist   RespuestaChecklist[]
+
+  @@map("usuario")
+}
+
+model BitacoraAuditoria {
+  id          BigInt   @id @default(autoincrement()) @map("id_evento")
+  // Nulo en intentos de acceso con correos desconocidos y en eventos del sistema (GitHub Actions).
+  usuarioId   Int?     @map("id_usuario")
+  accion      String   @db.VarChar(40)
+  entidad     String   @db.VarChar(40)
+  entidadId   Int?     @map("id_entidad")
+  detalle     String?  @db.VarChar(255)
+  direccionIp String?  @map("direccion_ip") @db.VarChar(45)
+  fechaEvento DateTime @default(now()) @map("fecha_evento")
+
+  usuario Usuario? @relation(fields: [usuarioId], references: [id])
+
+  @@index([usuarioId, fechaEvento(sort: Desc)], map: "idx_bitacora_usuario")
+  @@index([accion, fechaEvento(sort: Desc)], map: "idx_bitacora_accion")
+  @@map("bitacora_auditoria")
+}
+
+model Repositorio {
+  id            Int      @id @default(autoincrement()) @map("id_repositorio")
+  responsableId Int      @map("id_responsable")
+  nombre        String   @db.VarChar(80)
+  urlGithub     String   @unique @map("url_github") @db.VarChar(255)
+  ramaPrincipal String   @default("main") @map("rama_principal") @db.VarChar(60)
+  // SHA-256 del token de integración; el token en claro nunca se guarda.
+  tokenHash     String?  @unique @map("token_hash") @db.Char(64)
+  activo        Boolean  @default(true)
+  fechaRegistro DateTime @default(now()) @map("fecha_registro")
+
+  responsable Usuario               @relation(fields: [responsableId], references: [id])
+  politicas   RepositorioPolitica[]
+  escaneos    Escaneo[]
+
+  @@map("repositorio")
+}
+
+model PoliticaSeguridad {
+  id                 Int                   @id @default(autoincrement()) @map("id_politica")
+  severidadBloqueoId Int                   @map("id_severidad_bloqueo")
+  nombre             String                @unique @db.VarChar(80)
+  descripcion        String?               @db.VarChar(255)
+  coberturaMinima    Decimal?              @map("cobertura_minima") @db.Decimal(5, 2)
+  exigeChecklistIa   Boolean               @default(false) @map("exige_checklist_ia")
+  activa             Boolean               @default(true)
+
+  severidadBloqueo Severidad             @relation(fields: [severidadBloqueoId], references: [id])
+  repositorios     RepositorioPolitica[]
+
+  @@map("politica_seguridad")
+}
+
+model RepositorioPolitica {
+  repositorioId   Int      @map("id_repositorio")
+  politicaId      Int      @map("id_politica")
+  fechaAsignacion DateTime @default(now()) @map("fecha_asignacion")
+
+  repositorio Repositorio       @relation(fields: [repositorioId], references: [id], onDelete: Cascade)
+  politica    PoliticaSeguridad @relation(fields: [politicaId], references: [id])
+
+  @@id([repositorioId, politicaId])
+  @@map("repositorio_politica")
+}
+
+enum ResultadoGate {
+  APROBADO
+  BLOQUEADO
+  ERROR
+}
+
+model Escaneo {
+  id                Int           @id @default(autoincrement()) @map("id_escaneo")
+  repositorioId     Int           @map("id_repositorio")
+  // Nulo cuando el análisis viene de un push a la rama principal y no de un pull request.
+  numeroPr          Int?          @map("numero_pr")
+  ramaOrigen        String        @map("rama_origen") @db.VarChar(120)
+  commitSha         String        @map("commit_sha") @db.Char(40)
+  autorGithub       String        @map("autor_github") @db.VarChar(40)
+  // Resultado de hallazgos, pruebas y cobertura; el checklist puede bloquear un análisis aprobado.
+  resultadoAnalisis ResultadoGate @map("resultado_analisis")
+  resultado         ResultadoGate
+  motivo            String?       @db.VarChar(500)
+  totalHallazgos    Int           @default(0) @map("total_hallazgos")
+  coberturaPruebas  Decimal?      @map("cobertura_pruebas") @db.Decimal(5, 2)
+  pruebasFallidas   Int           @default(0) @map("pruebas_fallidas")
+  urlEjecucion      String?       @map("url_ejecucion") @db.VarChar(255)
+  fechaEjecucion    DateTime      @default(now()) @map("fecha_ejecucion")
+
+  repositorio Repositorio          @relation(fields: [repositorioId], references: [id])
+  hallazgos   Hallazgo[]
+  detecciones Deteccion[]
+  respuestas  RespuestaChecklist[]
+
+  @@unique([repositorioId, commitSha])
+  @@index([repositorioId, fechaEjecucion(sort: Desc)], map: "idx_escaneo_repo_fecha")
+  @@map("escaneo")
+}
+
+enum EstadoHallazgo {
+  ABIERTO
+  EN_PROGRESO
+  RESUELTO
+  FALSO_POSITIVO
+}
+
+model Hallazgo {
+  id             Int            @id @default(autoincrement()) @map("id_hallazgo")
+  // Escaneo en que se detectó por primera vez.
+  escaneoId      Int            @map("id_escaneo")
+  categoriaId    Int            @map("id_categoria")
+  severidadId    Int            @map("id_severidad")
+  herramientaId  Int            @map("id_herramienta")
+  asignadoId     Int?           @map("id_asignado")
+  titulo         String         @db.VarChar(150)
+  descripcion    String?
+  rutaArchivo    String?        @map("ruta_archivo") @db.VarChar(255)
+  linea          Int?
+  regla          String?        @db.VarChar(120)
+  // Identifica el mismo hallazgo entre escaneos sin guardar el secreto.
+  huella         String         @db.Char(64)
+  estado         EstadoHallazgo @default(ABIERTO)
+  fechaDeteccion DateTime       @default(now()) @map("fecha_deteccion")
+  fechaCierre    DateTime?      @map("fecha_cierre")
+
+  escaneo     Escaneo              @relation(fields: [escaneoId], references: [id])
+  categoria   CategoriaHallazgo    @relation(fields: [categoriaId], references: [id])
+  severidad   Severidad            @relation(fields: [severidadId], references: [id])
+  herramienta Herramienta          @relation(fields: [herramientaId], references: [id])
+  asignado    Usuario?             @relation(fields: [asignadoId], references: [id])
+  comentarios ComentarioHallazgo[]
+  detecciones Deteccion[]
+
+  @@index([estado, severidadId], map: "idx_hallazgo_estado_sev")
+  @@index([asignadoId], map: "idx_hallazgo_asignado")
+  @@index([huella], map: "idx_hallazgo_huella")
+  @@map("hallazgo")
+}
+
+// Cada escaneo en que aparece un hallazgo (relación N:M entre escaneo y hallazgo). El hallazgo
+// no se duplica entre escaneos; esta tabla registra en cuáles siguió presente.
+model Deteccion {
+  escaneoId  Int @map("id_escaneo")
+  hallazgoId Int @map("id_hallazgo")
+
+  escaneo  Escaneo  @relation(fields: [escaneoId], references: [id], onDelete: Cascade)
+  hallazgo Hallazgo @relation(fields: [hallazgoId], references: [id], onDelete: Cascade)
+
+  @@id([escaneoId, hallazgoId])
+  @@index([hallazgoId], map: "idx_deteccion_hallazgo")
+  @@map("deteccion")
+}
+
+model ComentarioHallazgo {
+  id              Int      @id @default(autoincrement()) @map("id_comentario")
+  hallazgoId      Int      @map("id_hallazgo")
+  usuarioId       Int      @map("id_usuario")
+  contenido       String
+  fechaComentario DateTime @default(now()) @map("fecha_comentario")
+
+  hallazgo Hallazgo @relation(fields: [hallazgoId], references: [id], onDelete: Cascade)
+  usuario  Usuario  @relation(fields: [usuarioId], references: [id])
+
+  @@map("comentario_hallazgo")
+}
+
+model RespuestaChecklist {
+  escaneoId      Int      @map("id_escaneo")
+  itemId         Int      @map("id_item")
+  usuarioId      Int      @map("id_usuario")
+  cumple         Boolean
+  observacion    String?  @db.VarChar(255)
+  fechaRespuesta DateTime @default(now()) @map("fecha_respuesta")
+
+  escaneo Escaneo       @relation(fields: [escaneoId], references: [id], onDelete: Cascade)
+  item    ItemChecklist @relation(fields: [itemId], references: [id])
+  usuario Usuario       @relation(fields: [usuarioId], references: [id])
+
+  @@id([escaneoId, itemId])
+  @@map("respuesta_checklist")
+}
